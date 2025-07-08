@@ -6,6 +6,7 @@ import (
 
 	"github.com/fahmaliyi/shield/config"
 	"github.com/fahmaliyi/shield/model"
+	"github.com/fahmaliyi/shield/rbac"
 	"github.com/fahmaliyi/shield/store"
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
@@ -18,13 +19,21 @@ type Manager struct {
 	config       config.Config
 	userStore    store.UserStore
 	sessionStore store.SessionStore
+
+	rbacStore rbac.RBACStore
+	enforcer  *rbac.Enforcer
 }
 
 func New() *Manager {
+	memRBAC := rbac.NewMemoryStore()
+
 	return &Manager{
 		config:       config.DefaultConfig(),
 		userStore:    store.NewMemoryUserStore(),
 		sessionStore: store.NewMemorySessionStore(),
+
+		rbacStore: memRBAC,
+		enforcer:  rbac.NewEnforcer(memRBAC),
 	}
 }
 
@@ -92,4 +101,20 @@ func (m *Manager) StartCleanup() {
 			m.sessionStore.CleanupExpired(m.config.SessionTTL)
 		}
 	}()
+}
+
+func (m *Manager) Can(userID string, action, resource string) bool {
+	return m.enforcer.Can(userID, rbac.Action(action), rbac.Resource(resource))
+}
+
+func (m *Manager) CanOwn(userID, action, resource, ownerID string) bool {
+	return m.enforcer.CanOwn(userID, rbac.Action(action), rbac.Resource(resource), ownerID)
+}
+
+func (m *Manager) AddRole(role rbac.Role) {
+	m.rbacStore.AddRole(role)
+}
+
+func (m *Manager) AssignRole(userID, roleName string) {
+	m.rbacStore.AssignRole(userID, roleName)
 }
